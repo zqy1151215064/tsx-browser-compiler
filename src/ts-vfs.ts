@@ -1,7 +1,7 @@
 import {
   createSystem,
   createDefaultMapFromCDN,
-  createVirtualCompilerHost,
+  createVirtualTypeScriptEnvironment,
 } from '@typescript/vfs';
 import ts from 'typescript';
 
@@ -18,7 +18,7 @@ const compilerOptions: ts.CompilerOptions = {
   target: ts.ScriptTarget.ES2020,
 };
 
-export const createFsMap = async (sources: Record<string, string>) => {
+export const createFsMap = async(sources: Record<string, string>) => {
   const fsMap = await createDefaultMapFromCDN({ target: compilerOptions.target }, ts.version, true, ts);
   for (const filename in sources) {
     if (/\.[jt]sx?$/.test(filename) || filename === '_') {
@@ -31,13 +31,8 @@ export const createFsMap = async (sources: Record<string, string>) => {
   return fsMap;
 };
 
-export const createTsProgram = (fsMap: Map<string, string>) => {
+export const createTsEnv = (fsMap: Map<string, string>) => {
+  const files = [...fsMap.keys()];
   const system = createSystem(fsMap);
-  const host = createVirtualCompilerHost(system, compilerOptions, ts)
-  const program = ts.createProgram({
-    rootNames: [...fsMap.keys()],
-    options: compilerOptions,
-    host: host.compilerHost,
-  });
-  return program;
-}
+  return createVirtualTypeScriptEnvironment(system, files, ts, compilerOptions);
+};
