@@ -1,43 +1,41 @@
 import * as React from 'react';
 
-import { createRequireFn } from './resolving';
-import { createFsMap, createTsEnv } from './ts-vfs';
-import type {
-  Config,
-  ClosureFn,
-  ReturnValue,
-} from './types';
+import { loadExternalsToClosureMap } from './utils/externals';
+import { normalizePath } from './utils/normalize-path';
+import { codeToClosure, createClosureMap, createRequireFn, mergeResolve } from './utils/resolving';
+import { createFsMap, createTsEnv } from './utils/ts-vfs';
+import type { Config, ReturnValue } from './types';
+import { parseSources } from './utils/loaders';
 
 export type * from './types';
 
-const codeToClosure = (code: string) => {
-  // Is there a better way to do this?
-  // eslint-disable-next-line no-eval
-  return eval(`(require) => {
-    const exports = {};
-    ${code}
-    return exports;
-  }`);
-};
+declare const __VERSION__: string;
+export const VERSION = __VERSION__;
 
 const errNoCode = new Error('No code emitted.');
 const ignoredCode = [
   2307,
+  6054,
+  7016,
   7026,
 ];
+
+const noop = () => { };
 
 export const asyncTsxToElement = async({
   sources,
   entryFile = '/index.js',
   resolve,
   requireFn,
+  rules = [],
   displayName = 'TsxToElement',
 }: Config): Promise<ReturnValue> => {
-  const fsMap = await createFsMap(sources);
-  const env = createTsEnv(fsMap);
   const codeMap: [string, string][] = [];
-  const closureMap: Record<string, ClosureFn> = {};
+  const closureMap = createClosureMap();
   const errors: Error[] = [];
+  const { parsedSources, cleanupFiles } = parseSources(sources, rules, errors);
+  const fsMap = await createFsMap(parsedSources);
+  const env = createTsEnv(fsMap);
   for (const filename of fsMap.keys()) {
     const emitOutput = env.languageService.getEmitOutput(filename);
     if (!emitOutput) {
@@ -54,7 +52,7 @@ export const asyncTsxToElement = async({
       const filename = emitOutput.outputFiles[0].name;
       codeMap.push([filename, code]);
       try {
-        closureMap[filename] = codeToClosure(code);
+        closureMap[filename] = codeToClosure(code, filename);
       } catch (e) {
         e.message = `${filename}: ${e.message}`;
         errors.push(e);
@@ -68,26 +66,39 @@ export const asyncTsxToElement = async({
       defaultExport: null,
       compiled: codeMap,
       errors,
+      cleanup: noop,
     };
   }
   try {
-    const closure = closureMap[entryFile];
+    const parsedEntryFile = normalizePath(entryFile, '/index.js');
+    const closure = closureMap[parsedEntryFile];
     if (!closure) {
-      errors.push(new Error(`No entry file emitted: '${entryFile}'.`));
+      errors.push(new Error(`No entry file emitted: '${parsedEntryFile}'.`));
       return {
         component: null,
         defaultExport: null,
         compiled: codeMap,
         errors,
+        cleanup: noop,
       };
     }
-    const result = closure(createRequireFn(closureMap, resolve, requireFn));
-    result.default.displayName = displayName;
+    const mergedResolve = mergeResolve(resolve);
+    await loadExternalsToClosureMap(mergedResolve, closureMap);
+    const result = closure(createRequireFn(closureMap, requireFn, mergedResolve));
+    if (!result.default.displayName) {
+      result.default.displayName = displayName;
+    }
     return {
       component: React.createElement(result.default),
       defaultExport: result.default,
       compiled: codeMap,
       errors,
+      cleanup: () => {
+        for (const filename of cleanupFiles) {
+          const style = document.head.querySelector(`style[data-tsx-browser-compiler-filename="${filename}"]`);
+          style?.remove();
+        }
+      },
     };
   } catch (e) {
     errors.push(e);
@@ -96,6 +107,7 @@ export const asyncTsxToElement = async({
       defaultExport: null,
       compiled: codeMap,
       errors,
+      cleanup: noop,
     };
   }
 };

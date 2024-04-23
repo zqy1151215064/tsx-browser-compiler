@@ -1,31 +1,32 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 
-import { asyncTsxToElement } from '../src';
+import { asyncTsxToElement, VERSION } from '../src';
 
-import CompileResult from './compile-result';
-import Editor from './editor';
-import Previewer from './previewer';
-import useDebouncedEffect from './use-debounced-effect';
+import CompileResult from './components/compile-result';
+import { defaultCodeSet } from './configs';
+import Editor from './components/editor';
+import Previewer from './components/previewer';
+import useDebouncedEffect from './hooks/use-debounced-effect';
+import BuildTimeMeasurementLoader from './loaders/build-time-measurement-loader';
+import LessLoader from './loaders/less-loader';
 
 import './index.less';
 
-const defaultIndexTsx = `import React from 'react';
-
-export default () => {
-  return (
-    <div>
-      <h1>Hello, world!</h1>
-    </div>
-  );
-};
-`.trim();
-
 const localStorageKey = 'tsx-browser-compiler-playground-sources';
 
+const IconSplit = (props: { className?: string; style?: React.CSSProperties }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" {...props}>
+    <rect x="15" y="4" width="2" height="24" />
+    <path d="M10,7V25H4V7h6m0-2H4A2,2,0,0,0,2,7V25a2,2,0,0,0,2,2h6a2,2,0,0,0,2-2V7a2,2,0,0,0-2-2Z" />
+    <path d="M28,7V25H22V7h6m0-2H22a2,2,0,0,0-2,2V25a2,2,0,0,0,2,2h6a2,2,0,0,0,2-2V7a2,2,0,0,0-2-2Z" />
+  </svg>
+);
+
 const Playground: React.FC = () => {
-  const [sources, setSources] = React.useState<[string, string][]>([['/index.tsx', defaultIndexTsx]]);
-  const [layout, setLayout] = React.useState('horizontal');
+  const [sources, setSources] = React.useState<[string, string][]>(defaultCodeSet);
+  const [loading, setLoading] = React.useState(false);
+  const [layout, setLayout] = React.useState(window.innerWidth < 960 ? 'vertical' : 'horizontal');
   const [displayedChildren, setDisplayedChildren] = React.useState<React.ReactNode>(null);
   const [displayedCompiled, setDisplayedCompiled] = React.useState<[string, string][]>([]);
   const [displayedErrors, setDisplayedErrors] = React.useState<Error[]>([]);
@@ -39,9 +40,24 @@ const Playground: React.FC = () => {
     }
   }, []);
 
+  React.useEffect(() => {
+    setLoading(true);
+  }, [sources]);
+
   useDebouncedEffect(async() => {
-    const { component, compiled, errors } = await asyncTsxToElement({
+    const { component, compiled, errors, cleanup } = await asyncTsxToElement({
       sources: Object.fromEntries(sources),
+      resolve: {
+        externals: {
+          'fork-me-on-github': '1.0.6',
+        },
+      },
+      rules: [
+        {
+          test: /\.less$/,
+          use: [BuildTimeMeasurementLoader, LessLoader],
+        },
+      ],
     });
     if (component !== null) {
       setDisplayedChildren(component);
@@ -52,30 +68,47 @@ const Playground: React.FC = () => {
       setDisplayedErrors(errors);
     }
     localStorage.setItem(localStorageKey, JSON.stringify(sources));
+    setLoading(false);
+
+    return cleanup;
   }, [sources], 1000);
+
+  const resetDemo = () => {
+    if (confirm('Are you sure to reset the demo?\nThis will clear all your changes.')) {
+      setSources(defaultCodeSet);
+    }
+  };
 
   return (
     <div className="app">
       <div className="controls">
-        <h1>TSX Browser Compiler</h1>
-        <div>
+        <h1>
+          TSX Browser Compiler
+          <small>v{VERSION}</small>
+        </h1>
+        <div className="controls-buttons">
+          <button onClick={resetDemo}>Reset demo</button>
           <label htmlFor="horizontal" className={layout === 'horizontal' ? 'checked' : ''}>
+            <IconSplit className="icon icon-split-horizontal" />
             <input type="radio"
               name="layout"
               id="horizontal"
-              defaultChecked
+              checked={layout === 'horizontal'}
               onChange={() => setLayout('horizontal')}
             />
-            <span>Horizontal</span>
           </label>
           <label htmlFor="vertical" className={layout === 'vertical' ? 'checked' : ''}>
+            <IconSplit
+              className="icon icon-split-vertical"
+              style={{ transform: 'rotate(90deg)' }}
+            />
             <input
               type="radio"
               id="vertical"
               name="layout"
+              checked={layout === 'vertical'}
               onChange={() => setLayout('vertical')}
             />
-            <span>Vertical</span>
           </label>
         </div>
       </div>
@@ -89,6 +122,7 @@ const Playground: React.FC = () => {
           className="playground-compile-result"
           result={displayedCompiled}
           errors={displayedErrors}
+          loading={loading}
         />
         <Previewer className="playground-previewer">
           {displayedChildren}

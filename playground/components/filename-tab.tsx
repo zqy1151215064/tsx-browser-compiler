@@ -1,7 +1,7 @@
 import React from 'react';
 
-interface FileNameProps {
-	focusTab: (index: number) => void;
+interface FileNameTabProps {
+	switchToTab: (index: number) => void;
 	renameTab: (index: number, newFileName: string) => void;
 	closeTab: (index: number) => void;
 	filename: string;
@@ -10,8 +10,8 @@ interface FileNameProps {
   className?: string;
 }
 
-const FileName: React.FC<FileNameProps> = ({
-  focusTab,
+const FileNameTab: React.FC<FileNameTabProps> = ({
+  switchToTab,
   renameTab,
   closeTab,
   filename,
@@ -33,7 +33,7 @@ const FileName: React.FC<FileNameProps> = ({
 
   return (
     <span
-      onClick={() => focusTab(index)}
+      onClick={() => !edit && switchToTab(index)}
       onMouseDown={e => e.button === 1 && !edit && closeTab(index)}
       onDoubleClick={showRename}
       className={[
@@ -49,12 +49,17 @@ const FileName: React.FC<FileNameProps> = ({
           ref={inputRef}
           defaultValue={filename}
           onBlur={(e) => {
-            renameTab(index, e.target.value);
+            if (filename !== e.target.value) {
+              renameTab(index, e.target.value);
+            }
             setEdit(false);
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
-              renameTab(index, e.currentTarget.value);
+              e.preventDefault();
+              if (filename !== e.currentTarget.value) {
+                renameTab(index, e.currentTarget.value);
+              }
               setEdit(false);
             }
           }}
@@ -71,4 +76,4 @@ const FileName: React.FC<FileNameProps> = ({
   );
 };
 
-export default FileName;
+export default FileNameTab;

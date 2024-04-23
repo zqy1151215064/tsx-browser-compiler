@@ -1,6 +1,6 @@
 {
   "name": "tsx-browser-compiler",
-  "version": "1.0.0",
+  "version": "1.0.0-alpha.3",
   "description": "Transform a set of `.tsx` file into React element, extremely useful for the \"live edit\" feature in component library documents.",
   "main": "dist/cjs/index.js",
   "module": "dist/index.js",
@@ -8,8 +8,11 @@
   "scripts": {
     "start": "cross-env rollup -c rollup.config.pages.ts -w",
     "dev": "cross-env pnpm start",
-    "lint:eslint": "eslint --ext .ts,.tsx . --quiet",
-    "lint:stylelint": "stylelint '**/*.{css,less}' --fix"
+    "lint:eslint": "cross-env eslint --ext .ts,.tsx . --quiet",
+    "lint:stylelint": "cross-env stylelint '**/*.{css,less}' --fix",
+    "build": "cross-env rollup -c",
+    "build:pages": "cross-env NODE_ENV=production BASEDIR=docs rollup -c rollup.config.pages.ts",
+    "prepublish": "cross-env pnpm build"
   },
   "repository": {
     "type": "git",
